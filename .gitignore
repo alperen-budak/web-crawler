@@ -1,0 +1,24 @@
+### --- PYTHON İÇİN STANDARTLAR --- ###
+__pycache__/
+*.py[cod]
+*$py.class
+.env
+venv/
+.venv/
+env/
+
+### --- OS & IDE İÇİN --- ###
+.DS_Store
+.vscode/
+.idea/
+
+### --- ÖDEV ÖZELİNDE DATA KLASÖRÜ --- ###
+
+# 1. Veri tabanı dosyalarını (sqlite) kesinlikle ignore et (Resimde gördüğüm dosyalar)
+data/*.db
+data/*.db-shm
+data/*.db-wal
+*.db
+
+# 2. Eğer varsa geçici iş dosyalarını ignore et
+data/jobs/

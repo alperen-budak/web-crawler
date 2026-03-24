@@ -1,0 +1,10 @@
+services:
+  crawler-app:
+    build: .
+    ports:
+      - "3600:3600"
+    volumes:
+      - ./data:/app/data
+    environment:
+      - PORT=3600
+    restart: unless-stopped

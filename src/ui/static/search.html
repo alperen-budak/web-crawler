@@ -1,0 +1,159 @@
+<!DOCTYPE html>
+<html lang="tr">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Search</title>
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; background: #0f172a; color: #e2e8f0; min-height: 100vh; }
+
+        nav { background: #1e293b; padding: 1rem 2rem; display: flex; gap: 2rem; align-items: center; border-bottom: 1px solid #334155; }
+        nav a { color: #94a3b8; text-decoration: none; font-weight: 500; transition: color 0.2s; }
+        nav a:hover, nav a.active { color: #38bdf8; }
+        nav .logo { font-size: 1.25rem; font-weight: 700; color: #f1f5f9; margin-right: auto; }
+
+        .container { max-width: 960px; margin: 2rem auto; padding: 0 1.5rem; }
+        h1 { font-size: 1.5rem; margin-bottom: 1.5rem; color: #f1f5f9; }
+
+        .card { background: #1e293b; border: 1px solid #334155; border-radius: 12px; padding: 1.5rem; margin-bottom: 1.5rem; }
+
+        .search-bar { display: flex; gap: 0.8rem; }
+        .search-bar input {
+            flex: 1; padding: 0.7rem 1rem; background: #0f172a; border: 1px solid #475569;
+            border-radius: 8px; color: #f1f5f9; font-size: 1rem; outline: none; transition: border 0.2s;
+        }
+        .search-bar input:focus { border-color: #38bdf8; }
+        .search-bar button {
+            background: #2563eb; color: #fff; border: none; padding: 0.7rem 1.5rem;
+            border-radius: 8px; font-size: 1rem; font-weight: 600; cursor: pointer; transition: background 0.2s;
+        }
+        .search-bar button:hover { background: #1d4ed8; }
+
+        .meta { color: #64748b; font-size: 0.85rem; margin-bottom: 1rem; }
+
+        table { width: 100%; border-collapse: collapse; }
+        th { text-align: left; padding: 0.6rem 0.8rem; color: #94a3b8; font-size: 0.8rem; text-transform: uppercase; letter-spacing: 0.05em; border-bottom: 1px solid #334155; }
+        td { padding: 0.6rem 0.8rem; border-bottom: 1px solid #1e293b; font-size: 0.85rem; word-break: break-all; }
+        tr:hover { background: #1e293b88; }
+        td a { color: #38bdf8; text-decoration: none; }
+        td a:hover { text-decoration: underline; }
+
+        .freq-bar { display: inline-block; height: 8px; background: #2563eb; border-radius: 4px; min-width: 4px; }
+
+        .pagination { display: flex; gap: 0.5rem; justify-content: center; margin-top: 1rem; }
+        .pagination button {
+            background: #334155; color: #e2e8f0; border: 1px solid #475569; padding: 0.4rem 1rem;
+            border-radius: 6px; cursor: pointer; font-size: 0.85rem; transition: background 0.2s;
+        }
+        .pagination button:hover { background: #475569; }
+        .pagination button:disabled { opacity: 0.4; cursor: not-allowed; }
+        .pagination .current { color: #38bdf8; font-weight: 600; padding: 0.4rem 0.5rem; }
+
+        .empty { color: #64748b; font-style: italic; padding: 2rem; text-align: center; }
+    </style>
+</head>
+<body>
+
+<nav>
+    <span class="logo">🕷️ Crawler</span>
+    <a href="/">Dashboard</a>
+    <a href="/search-ui" class="active">Search</a>
+</nav>
+
+<div class="container">
+    <h1>🔍 Search Index</h1>
+
+    <div class="card">
+        <form id="searchForm" class="search-bar">
+            <input type="text" id="query" placeholder="Search for words... (e.g. python, example)" autofocus>
+            <button type="submit">Search</button>
+        </form>
+    </div>
+
+    <div id="resultsArea" style="display:none;">
+        <div class="meta" id="resultsMeta"></div>
+        <div class="card" style="padding:0; overflow-x:auto;">
+            <table>
+                <thead>
+                    <tr>
+                        <th>URL</th>
+                        <th>Origin URL</th>
+                        <th>Depth</th>
+                        <th>Frequency</th>
+                    </tr>
+                </thead>
+                <tbody id="resultsBody"></tbody>
+            </table>
+        </div>
+        <div class="pagination" id="pagination"></div>
+    </div>
+
+    <div id="emptyState" class="empty" style="margin-top:3rem;">
+        Enter a search query to find indexed pages.
+    </div>
+</div>
+
+<script>
+let currentPage = 1;
+const pageSize = 10;
+let currentQuery = '';
+let maxFreq = 1;
+
+async function doSearch(page) {
+    const q = document.getElementById('query').value.trim();
+    if (!q) return;
+    currentQuery = q;
+    currentPage = page || 1;
+
+    try {
+        const res = await fetch(`/search?q=${encodeURIComponent(q)}&page=${currentPage}&size=${pageSize}`);
+        const data = await res.json();
+
+        document.getElementById('emptyState').style.display = 'none';
+        document.getElementById('resultsArea').style.display = 'block';
+
+        const total = data.total || 0;
+        const totalPages = Math.ceil(total / pageSize);
+        document.getElementById('resultsMeta').textContent = `${total} result${total !== 1 ? 's' : ''} for "${q}" — Page ${currentPage} of ${totalPages || 1}`;
+
+        const tbody = document.getElementById('resultsBody');
+        if (!data.results || data.results.length === 0) {
+            tbody.innerHTML = '<tr><td colspan="4" class="empty">No results found.</td></tr>';
+            document.getElementById('pagination').innerHTML = '';
+            return;
+        }
+
+        maxFreq = Math.max(...data.results.map(r => r.frequency || 1));
+
+        tbody.innerHTML = data.results.map(r => {
+            const barW = Math.max(4, Math.round((r.frequency / maxFreq) * 80));
+            return `<tr>
+                <td><a href="${r.url}" target="_blank">${r.url}</a></td>
+                <td style="color:#94a3b8">${r.origin_url || '—'}</td>
+                <td>${r.depth}</td>
+                <td><span class="freq-bar" style="width:${barW}px"></span> ${r.frequency}</td>
+            </tr>`;
+        }).join('');
+
+        // Pagination
+        const pag = document.getElementById('pagination');
+        let pagHTML = '';
+        pagHTML += `<button ${currentPage <= 1 ? 'disabled' : ''} onclick="doSearch(${currentPage - 1})">← Prev</button>`;
+        pagHTML += `<span class="current">Page ${currentPage} / ${totalPages || 1}</span>`;
+        pagHTML += `<button ${currentPage >= totalPages ? 'disabled' : ''} onclick="doSearch(${currentPage + 1})">Next →</button>`;
+        pag.innerHTML = pagHTML;
+
+    } catch (e) {
+        console.error('Search error:', e);
+    }
+}
+
+document.getElementById('searchForm').addEventListener('submit', (e) => {
+    e.preventDefault();
+    doSearch(1);
+});
+</script>
+
+</body>
+</html>

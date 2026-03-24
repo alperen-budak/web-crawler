@@ -1,0 +1,195 @@
+<!DOCTYPE html>
+<html lang="tr">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Crawler Dashboard</title>
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; background: #0f172a; color: #e2e8f0; min-height: 100vh; }
+        
+        nav { background: #1e293b; padding: 1rem 2rem; display: flex; gap: 2rem; align-items: center; border-bottom: 1px solid #334155; }
+        nav a { color: #94a3b8; text-decoration: none; font-weight: 500; transition: color 0.2s; }
+        nav a:hover, nav a.active { color: #38bdf8; }
+        nav .logo { font-size: 1.25rem; font-weight: 700; color: #f1f5f9; margin-right: auto; }
+
+        .container { max-width: 960px; margin: 2rem auto; padding: 0 1.5rem; }
+        h1 { font-size: 1.5rem; margin-bottom: 1.5rem; color: #f1f5f9; }
+        h2 { font-size: 1.1rem; margin-bottom: 1rem; color: #cbd5e1; }
+
+        .card { background: #1e293b; border: 1px solid #334155; border-radius: 12px; padding: 1.5rem; margin-bottom: 1.5rem; }
+
+        label { display: block; font-size: 0.85rem; color: #94a3b8; margin-bottom: 0.3rem; font-weight: 500; }
+        input[type="text"], input[type="number"] { 
+            width: 100%; padding: 0.6rem 0.8rem; background: #0f172a; border: 1px solid #475569; 
+            border-radius: 8px; color: #f1f5f9; font-size: 0.95rem; outline: none; transition: border 0.2s;
+        }
+        input:focus { border-color: #38bdf8; }
+        .form-row { display: flex; gap: 1rem; margin-bottom: 1rem; }
+        .form-row > div { flex: 1; }
+        .form-row > div:first-child { flex: 3; }
+
+        button {
+            background: #2563eb; color: #fff; border: none; padding: 0.65rem 1.5rem;
+            border-radius: 8px; font-size: 0.95rem; font-weight: 600; cursor: pointer; transition: background 0.2s;
+        }
+        button:hover { background: #1d4ed8; }
+        button:disabled { background: #475569; cursor: not-allowed; }
+
+        .badge { display: inline-block; padding: 0.15rem 0.6rem; border-radius: 999px; font-size: 0.75rem; font-weight: 600; }
+        .badge-running { background: #065f46; color: #34d399; }
+        .badge-completed { background: #1e3a5f; color: #38bdf8; }
+        .badge-failed { background: #7f1d1d; color: #fca5a5; }
+        .badge-error { background: #7f1d1d; color: #fca5a5; }
+        .badge-unknown { background: #3f3f46; color: #a1a1aa; }
+
+        table { width: 100%; border-collapse: collapse; }
+        th { text-align: left; padding: 0.6rem 0.8rem; color: #94a3b8; font-size: 0.8rem; text-transform: uppercase; letter-spacing: 0.05em; border-bottom: 1px solid #334155; }
+        td { padding: 0.6rem 0.8rem; border-bottom: 1px solid #1e293b; font-size: 0.9rem; }
+        tr:hover { background: #1e293b88; }
+        td a { color: #38bdf8; text-decoration: none; }
+        td a:hover { text-decoration: underline; }
+
+        .empty { color: #64748b; font-style: italic; padding: 2rem; text-align: center; }
+        .msg { padding: 0.8rem 1rem; border-radius: 8px; margin-bottom: 1rem; font-size: 0.9rem; }
+        .msg-ok { background: #065f46; color: #34d399; }
+        .msg-err { background: #7f1d1d; color: #fca5a5; }
+    </style>
+</head>
+<body>
+
+<nav>
+    <span class="logo">🕷️ Crawler</span>
+    <a href="/" class="active">Dashboard</a>
+    <a href="/search-ui">Search</a>
+</nav>
+
+<div class="container">
+    <h1>New Crawl Job</h1>
+
+    <div class="card">
+        <div id="msg" style="display:none"></div>
+        <form id="crawlForm">
+            <div class="form-row">
+                <div>
+                    <label for="url">Seed URL</label>
+                    <input type="text" id="url" placeholder="https://example.com" required>
+                </div>
+                <div>
+                    <label for="depth">Depth</label>
+                    <input type="number" id="depth" value="2" min="0" max="10">
+                </div>
+            </div>
+            <button type="submit" id="submitBtn">🚀 Start Crawl</button>
+        </form>
+    </div>
+
+    <h2>Job History</h2>
+    <div class="card">
+        <table>
+            <thead>
+                <tr>
+                    <th>Crawler ID</th>
+                    <th>Seed URL</th>
+                    <th>Status</th>
+                    <th>Processed</th>
+                    <th>Errors</th>
+                    <th>Depth</th>
+                    <th>Actions</th>
+                </tr>
+            </thead>
+            <tbody id="jobList">
+                <tr><td colspan="7" class="empty">Loading...</td></tr>
+            </tbody>
+        </table>
+    </div>
+</div>
+
+<script>
+const API = '';
+
+function showMsg(text, ok) {
+    const el = document.getElementById('msg');
+    el.className = ok ? 'msg msg-ok' : 'msg msg-err';
+    el.textContent = text;
+    el.style.display = 'block';
+    setTimeout(() => { el.textContent = ''; el.className = ''; el.style.display = 'none'; }, 5000);
+}
+
+function badgeClass(status) {
+    if (status === 'running') return 'badge badge-running';
+    if (status === 'completed') return 'badge badge-completed';
+    if (status === 'failed') return 'badge badge-failed';
+    if (status === 'error') return 'badge badge-error';
+    return 'badge badge-unknown';
+}
+
+async function loadJobs() {
+    try {
+        const res = await fetch(API + '/crawl/list');
+        const data = await res.json();
+        const tbody = document.getElementById('jobList');
+
+        if (!data.jobs || data.jobs.length === 0) {
+            tbody.innerHTML = '<tr><td colspan="7" class="empty">No jobs yet. Start one above!</td></tr>';
+            return;
+        }
+
+        tbody.innerHTML = data.jobs.map(j => {
+            const seedUrl = j.seed_url || '—';
+            const shortUrl = seedUrl.length > 40 ? seedUrl.substring(0, 40) + '…' : seedUrl;
+            return `
+            <tr>
+                <td style="font-family:monospace;font-size:0.8rem">${j.crawler_id}</td>
+                <td title="${seedUrl}" style="font-size:0.85rem;max-width:200px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${shortUrl}</td>
+                <td><span class="${badgeClass(j.status)}">${j.status}</span></td>
+                <td>${j.processed || 0}</td>
+                <td>${j.errors || 0}</td>
+                <td>${j.max_depth || '—'}</td>
+                <td><a href="/status?id=${j.crawler_id}">View Logs</a></td>
+            </tr>
+        `}).join('');
+    } catch (e) {
+        console.error('Failed to load jobs:', e);
+    }
+}
+
+document.getElementById('crawlForm').addEventListener('submit', async (e) => {
+    e.preventDefault();
+    const btn = document.getElementById('submitBtn');
+    btn.disabled = true;
+    btn.textContent = '⏳ Starting...';
+
+    const url = document.getElementById('url').value.trim();
+    const depth = parseInt(document.getElementById('depth').value) || 2;
+
+    try {
+        const res = await fetch(API + '/crawl', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ url, depth })
+        });
+        const data = await res.json();
+
+        if (res.ok) {
+            showMsg(`Job started: ${data.crawler_id}`, true);
+            document.getElementById('url').value = '';
+            loadJobs();
+        } else {
+            showMsg(data.error || 'Failed to start crawl', false);
+        }
+    } catch (err) {
+        showMsg('Network error: ' + err.message, false);
+    } finally {
+        btn.disabled = false;
+        btn.textContent = '🚀 Start Crawl';
+    }
+});
+
+// Initial load + auto-refresh every 3s
+loadJobs();
+setInterval(loadJobs, 3000);
+</script>
+
+</body>
+</html>

@@ -1,0 +1,201 @@
+<!DOCTYPE html>
+<html lang="tr">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Job Status</title>
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; background: #0f172a; color: #e2e8f0; min-height: 100vh; }
+
+        nav { background: #1e293b; padding: 1rem 2rem; display: flex; gap: 2rem; align-items: center; border-bottom: 1px solid #334155; }
+        nav a { color: #94a3b8; text-decoration: none; font-weight: 500; transition: color 0.2s; }
+        nav a:hover, nav a.active { color: #38bdf8; }
+        nav .logo { font-size: 1.25rem; font-weight: 700; color: #f1f5f9; margin-right: auto; }
+
+        .container { max-width: 960px; margin: 2rem auto; padding: 0 1.5rem; }
+        h1 { font-size: 1.5rem; margin-bottom: 0.5rem; color: #f1f5f9; }
+        .subtitle { color: #64748b; font-size: 0.85rem; margin-bottom: 1.5rem; font-family: monospace; }
+
+        .card { background: #1e293b; border: 1px solid #334155; border-radius: 12px; padding: 1.5rem; margin-bottom: 1.5rem; }
+
+        .metrics { display: grid; grid-template-columns: repeat(auto-fit, minmax(160px, 1fr)); gap: 1rem; margin-bottom: 1.5rem; }
+        .metric { background: #0f172a; border: 1px solid #334155; border-radius: 10px; padding: 1rem; text-align: center; }
+        .metric .value { font-size: 1.8rem; font-weight: 700; color: #f1f5f9; }
+        .metric .label { font-size: 0.75rem; color: #64748b; text-transform: uppercase; letter-spacing: 0.05em; margin-top: 0.3rem; }
+        .metric.running .value { color: #34d399; }
+        .metric.warning .value { color: #fbbf24; }
+        .metric.error .value { color: #f87171; }
+        .metric.info .value { color: #38bdf8; }
+
+        .badge { display: inline-block; padding: 0.2rem 0.7rem; border-radius: 999px; font-size: 0.8rem; font-weight: 600; }
+        .badge-running { background: #065f46; color: #34d399; animation: pulse 2s infinite; }
+        .badge-completed { background: #1e3a5f; color: #38bdf8; }
+        .badge-error { background: #7f1d1d; color: #fca5a5; }
+        @keyframes pulse { 0%, 100% { opacity: 1; } 50% { opacity: 0.6; } }
+
+        .log-box { background: #0f172a; border: 1px solid #334155; border-radius: 8px; max-height: 500px; overflow-y: auto; font-family: monospace; font-size: 0.8rem; line-height: 1.6; padding: 1rem; }
+        .log-entry { padding: 0.2rem 0; border-bottom: 1px solid #1e293b; }
+        .log-entry .time { color: #64748b; margin-right: 0.5rem; }
+        .log-entry .type { font-weight: 600; margin-right: 0.5rem; }
+        .log-type-fetch { color: #38bdf8; }
+        .log-type-fetched { color: #34d399; }
+        .log-type-indexed { color: #a78bfa; }
+        .log-type-enqueued { color: #fbbf24; }
+        .log-type-error, .log-type-fetch_error { color: #f87171; }
+        .log-type-back_pressure { color: #fb923c; }
+        .log-type-status { color: #38bdf8; font-weight: 700; }
+
+        .back-to { margin-top: 1rem; }
+        .back-to a { color: #38bdf8; text-decoration: none; }
+        .back-to a:hover { text-decoration: underline; }
+        .empty { color: #64748b; font-style: italic; padding: 2rem; text-align: center; }
+    </style>
+</head>
+<body>
+
+<nav>
+    <span class="logo">🕷️ Crawler</span>
+    <a href="/">Dashboard</a>
+    <a href="/status" class="active">Status</a>
+    <a href="/search-ui">Search</a>
+</nav>
+
+<div class="container">
+    <h1>Job Status <span id="statusBadge"></span></h1>
+    <div class="subtitle" id="jobId">Loading...</div>
+
+    <div class="metrics" id="metricsGrid">
+        <div class="metric info">
+            <div class="value" id="metProcessed">—</div>
+            <div class="label">URLs Processed</div>
+        </div>
+        <div class="metric running">
+            <div class="value" id="metQueue">—</div>
+            <div class="label">Queue Size</div>
+        </div>
+        <div class="metric warning" id="metBPCard">
+            <div class="value" id="metBP">OFF</div>
+            <div class="label">Back Pressure</div>
+        </div>
+        <div class="metric error">
+            <div class="value" id="metErrors">—</div>
+            <div class="label">Errors</div>
+        </div>
+        <div class="metric info">
+            <div class="value" id="metDepth">—</div>
+            <div class="label">Max Depth</div>
+        </div>
+    </div>
+
+    <h2 style="font-size:1.1rem; color:#cbd5e1; margin-bottom:1rem;">Live Logs</h2>
+    <div class="card" style="padding:0;">
+        <div class="log-box" id="logBox">
+            <div class="empty">Waiting for logs...</div>
+        </div>
+    </div>
+
+    <div class="back-to">
+        <a href="/">← Back to Dashboard</a>
+    </div>
+</div>
+
+<script>
+const params = new URLSearchParams(window.location.search);
+const jobId = params.get('id');
+let logOffset = 0;
+let pollInterval = null;
+
+function badgeHTML(status) {
+    const cls = status === 'running' ? 'badge-running' : status === 'completed' ? 'badge-completed' : 'badge-error';
+    return `<span class="badge ${cls}">${status}</span>`;
+}
+
+function formatTime(ts) {
+    if (!ts) return '';
+    const d = new Date(ts * 1000);
+    return d.toLocaleTimeString();
+}
+
+function logHTML(log) {
+    const time = formatTime(log.timestamp);
+    const type = log.type || 'info';
+    let detail = '';
+
+    if (type === 'fetch') detail = `Fetching ${log.url} (depth=${log.depth})`;
+    else if (type === 'fetched') detail = `OK ${log.url} — ${log.size} bytes`;
+    else if (type === 'fetch_error') detail = `FAIL ${log.url} — HTTP ${log.status}`;
+    else if (type === 'indexed') detail = `Indexed ${log.words} words, found ${log.links_found} links (${log.url})`;
+    else if (type === 'enqueued') detail = `+${log.new_links} links queued (depth=${log.depth}, queue=${log.queue_size})`;
+    else if (type === 'back_pressure') detail = `⚠ Queue full — ${log.url}`;
+    else if (type === 'error') detail = `ERROR: ${log.message} (${log.url})`;
+    else if (type === 'status') detail = `${log.message} — ${log.processed} processed, ${log.errors} errors`;
+    else detail = JSON.stringify(log);
+
+    return `<div class="log-entry"><span class="time">${time}</span><span class="type log-type-${type}">[${type}]</span>${detail}</div>`;
+}
+
+async function poll() {
+    if (!jobId) {
+        document.getElementById('jobId').textContent = 'No job ID in URL. Go to Dashboard to select a job.';
+        return;
+    }
+    document.getElementById('jobId').textContent = jobId;
+
+    try {
+        const res = await fetch(`/crawl/${jobId}?since=${logOffset}`);
+        if (!res.ok) {
+            document.getElementById('logBox').innerHTML = '<div class="empty">Job not found.</div>';
+            return;
+        }
+        const data = await res.json();
+
+        // Update badge
+        document.getElementById('statusBadge').innerHTML = badgeHTML(data.status);
+
+        // Update metrics
+        document.getElementById('metProcessed').textContent = data.processed ?? '—';
+        document.getElementById('metQueue').textContent = data.queue_size ?? '—';
+        document.getElementById('metErrors').textContent = data.errors ?? 0;
+        document.getElementById('metDepth').textContent = data.max_depth ?? '—';
+
+        // Back pressure detection
+        const logs = data.logs || [];
+        const hasBP = logs.some(l => l.type === 'back_pressure');
+        const bpEl = document.getElementById('metBP');
+        const bpCard = document.getElementById('metBPCard');
+        if (hasBP) {
+            bpEl.textContent = 'ACTIVE';
+            bpCard.className = 'metric warning';
+        } else if (data.status === 'completed') {
+            bpEl.textContent = 'OFF';
+            bpCard.className = 'metric info';
+        }
+
+        // Append new logs
+        if (logs.length > 0) {
+            const box = document.getElementById('logBox');
+            if (logOffset === 0) box.innerHTML = '';
+            box.innerHTML += logs.map(logHTML).join('');
+            box.scrollTop = box.scrollHeight;
+            logOffset += logs.length;
+        }
+
+        // Stop polling if completed
+        if (data.status === 'completed' || data.status === 'error') {
+            if (pollInterval) {
+                clearInterval(pollInterval);
+                pollInterval = null;
+            }
+        }
+    } catch (e) {
+        console.error('Poll error:', e);
+    }
+}
+
+poll();
+pollInterval = setInterval(poll, 2000);
+</script>
+
+</body>
+</html>
